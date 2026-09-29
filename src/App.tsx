@@ -106,6 +106,7 @@ async function confirmDestructiveAction(
     icon: "warning",
     iconColor: "#F6981B",
     showCancelButton: true,
+    allowOutsideClick: false,
     reverseButtons: true,
     focusCancel: true,
     buttonsStyling: false,
@@ -299,6 +300,7 @@ function getVideoPreviewUrl(rawUrl: string) {
 }
 
 type ProductCompatibilityPair = { system: string; connection: string };
+type BluetoothDeviceSupport = "single" | "middle" | "up-to-10" | "other-device";
 const compatibilitySystems = ["Windows", "Android", "iOS", "macOS"];
 const compatibilityConnections = ["Bluetooth", "USB", "Ethernet"];
 
@@ -309,6 +311,8 @@ type Product = {
   brand: string;
   connections: string[];
   systems: string[];
+  driverDownloadUrl?: string;
+  bluetoothDeviceSupport?: BluetoothDeviceSupport;
   compatibilityPairs?: ProductCompatibilityPair[];
   appSupport?: Record<string, AppSupportStatus>;
   accent: string;
@@ -3179,8 +3183,14 @@ function ProductDetailsModal({
     unsupported: "Tidak mendukung",
     "not-tested": "Belum dapat diuji",
   };
+  const bluetoothDeviceSupportLabels: Record<BluetoothDeviceSupport, string> = {
+    single: "1 perangkat",
+    middle: "2–5 perangkat",
+    "up-to-10": "Hingga 10 perangkat",
+    "other-device": "Perangkat lain (acak)",
+  };
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div className="modal-backdrop" role="presentation">
       <section
         className="product-modal product-detail-modal"
         role="dialog"
@@ -3219,6 +3229,16 @@ function ProductDetailsModal({
             <small>Kategori</small>
             <strong>{product.category}</strong>
           </div>
+          {product.connections.includes("Bluetooth") && (
+            <div>
+              <small>Dukungan perangkat Bluetooth</small>
+              <strong>
+                {product.bluetoothDeviceSupport
+                  ? bluetoothDeviceSupportLabels[product.bluetoothDeviceSupport]
+                  : "Belum diverifikasi"}
+              </strong>
+            </div>
+          )}
         </div>
         {product.category === "Thermal Printer" && (
           <section className="product-app-support">
@@ -3371,6 +3391,7 @@ function ProductDetailsModal({
             </>
           )}
         </section>
+        <ProductDriverActions url={product.driverDownloadUrl} variant="modal" />
         <div className="modal-footer">
           <button className="button-secondary" onClick={onCheckCompatibility}>
             Cek compatibility <Icon name="arrow" size={14} />
@@ -3715,7 +3736,7 @@ function SoftwareDetailsModal({
     }
   };
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div className="modal-backdrop" role="presentation">
       <section
         className="software-details-modal"
         role="dialog"
@@ -4570,11 +4591,7 @@ function VideoPreviewModal({
     }
   };
   return (
-    <div
-      className="modal-backdrop video-preview-backdrop"
-      role="presentation"
-      onClick={onClose}
-    >
+    <div className="modal-backdrop video-preview-backdrop" role="presentation">
       <section
         className="video-preview-modal"
         role="dialog"
@@ -4791,6 +4808,7 @@ function ProductEditorModal({
         },
   );
   const [compatibilityError, setCompatibilityError] = useState("");
+  const [driverUrlError, setDriverUrlError] = useState("");
   const setAppSupport = (appId: string, status: AppSupportStatus | "") => {
     setDraft((current) => {
       const appSupport = { ...current.appSupport };
@@ -4886,6 +4904,14 @@ function ProductEditorModal({
   };
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const driverDownloadUrl = draft.driverDownloadUrl?.trim() ?? "";
+    if (driverDownloadUrl && !/^https?:\/\/\S+$/i.test(driverDownloadUrl)) {
+      setDriverUrlError(
+        "Masukkan link driver yang diawali http:// atau https://.",
+      );
+      return;
+    }
+    setDriverUrlError("");
     if (!draft.compatibilityPairs?.length) {
       setCompatibilityError(
         "Pilih minimal satu kombinasi OS dan koneksi yang sudah diverifikasi.",
@@ -4898,6 +4924,7 @@ function ProductEditorModal({
       name: draft.name.trim(),
       code: draft.code.trim(),
       brand: draft.brand.trim(),
+      driverDownloadUrl,
       description: draft.description.trim(),
       labelSupport: {
         ...draft.labelSupport,
@@ -4906,11 +4933,7 @@ function ProductEditorModal({
     });
   };
   return (
-    <div
-      className="modal-backdrop product-editor-backdrop"
-      role="presentation"
-      onClick={onCancel}
-    >
+    <div className="modal-backdrop product-editor-backdrop" role="presentation">
       <form
         className="product-editor-modal"
         role="dialog"
@@ -5009,6 +5032,25 @@ function ProductEditorModal({
               onChange={(event) => setField("description", event.target.value)}
               placeholder="Deskripsi singkat produk"
             />
+          </label>
+          <label className="field-label product-description-field">
+            Link download driver{" "}
+            <span className="optional-label">Opsional</span>
+            <input
+              type="url"
+              value={draft.driverDownloadUrl ?? ""}
+              onChange={(event) => {
+                setField("driverDownloadUrl", event.target.value);
+                setDriverUrlError("");
+              }}
+              placeholder="https://drive.google.com/..."
+              aria-describedby={driverUrlError ? "driver-url-error" : undefined}
+            />
+            {driverUrlError && (
+              <span className="form-error" id="driver-url-error" role="alert">
+                {driverUrlError}
+              </span>
+            )}
           </label>
         </div>
         {draft.category === "Thermal Printer" && (
@@ -5112,6 +5154,37 @@ function ProductEditorModal({
               </tbody>
             </table>
           </div>
+          {draft.connections.includes("Bluetooth") && (
+            <section className="product-app-support-editor bluetooth-device-support-editor">
+              <div className="product-app-support-editor-heading">
+                <strong>Dukungan perangkat Bluetooth</strong>
+                <small>
+                  Isi sesuai spesifikasi produk. Perangkat lain (acak) tidak
+                  berarti bisa terhubung bersamaan.
+                </small>
+              </div>
+              <label className="field-label">
+                Kapasitas perangkat
+                <select
+                  value={draft.bluetoothDeviceSupport ?? ""}
+                  onChange={(event) =>
+                    setField(
+                      "bluetoothDeviceSupport",
+                      (event.target.value || undefined) as
+                        | BluetoothDeviceSupport
+                        | undefined,
+                    )
+                  }
+                >
+                  <option value="">Belum diverifikasi</option>
+                  <option value="single">1 perangkat</option>
+                  <option value="middle">2–5 perangkat</option>
+                  <option value="up-to-10">Hingga 10 perangkat</option>
+                  <option value="other-device">Perangkat lain (acak)</option>
+                </select>
+              </label>
+            </section>
+          )}
           {compatibilityError && (
             <p className="product-compatibility-error" role="alert">
               {compatibilityError}
@@ -5400,6 +5473,7 @@ function ProductCard({
           </span>
         ))}
       </div>
+      <ProductDriverActions url={product.driverDownloadUrl} variant="card" />
       <button className="product-card-link" onClick={onClick}>
         Lihat detail <Icon name="arrow" size={14} />
       </button>
@@ -5410,6 +5484,85 @@ function ProductCard({
         </div>
       )}
     </article>
+  );
+}
+
+function ProductDriverActions({
+  url,
+  variant,
+}: {
+  url?: string;
+  variant: "card" | "modal";
+}) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
+  const driverUrl = url?.trim() ?? "";
+
+  const copyDriverUrl = async () => {
+    if (!driverUrl) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(driverUrl);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = driverUrl;
+        input.style.position = "fixed";
+        input.style.opacity = "0";
+        document.body.appendChild(input);
+        input.select();
+        const copied = document.execCommand("copy");
+        document.body.removeChild(input);
+        if (!copied) throw new Error("Clipboard unavailable");
+      }
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    window.setTimeout(() => setCopyState("idle"), 1800);
+  };
+
+  return (
+    <div className={`product-driver-actions product-driver-actions-${variant}`}>
+      {driverUrl ? (
+        <a
+          className="product-driver-link"
+          href={driverUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Icon name="download" size={14} /> Download driver
+        </a>
+      ) : (
+        <button
+          className="product-driver-link"
+          type="button"
+          disabled
+          title="Admin belum menambahkan link driver"
+        >
+          <Icon name="download" size={14} /> Driver belum tersedia
+        </button>
+      )}
+      <button
+        className="product-driver-copy"
+        type="button"
+        disabled={!driverUrl}
+        onClick={() => void copyDriverUrl()}
+        aria-label={
+          copyState === "copied" ? "Link driver tersalin" : "Salin link driver"
+        }
+        title={
+          copyState === "failed" ? "Gagal menyalin link" : "Salin link driver"
+        }
+      >
+        <Icon name={copyState === "copied" ? "check" : "copy"} size={14} />
+        {copyState === "copied"
+          ? "Tersalin"
+          : copyState === "failed"
+            ? "Gagal"
+            : "Salin link"}
+      </button>
+    </div>
   );
 }
 
