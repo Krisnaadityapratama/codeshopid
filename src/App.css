@@ -1125,6 +1125,26 @@ button {
   font-size: 9px;
   font-weight: 650;
 }
+.product-verification-badge {
+  width: fit-content;
+  margin-top: 7px;
+  padding: 4px 6px;
+  display: block;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 7px;
+  font-weight: 700;
+}
+.product-verification-badge.unverified {
+  border-color: #eedeca;
+  color: #957347;
+  background: #faf3eb;
+}
+.product-verification-badge.verified {
+  border-color: #c5dfcb;
+  color: #35734a;
+  background: #eaf5ec;
+}
 .product-card h3 {
   margin: 5px 0 4px;
   color: #343c40;
@@ -4604,6 +4624,41 @@ button {
   max-height: min(92vh, 900px);
   overflow-y: auto;
 }
+.barcode-print-specs {
+  margin-top: 16px;
+  padding: 13px 15px;
+  border: 1px solid #e5eaec;
+  border-radius: 8px;
+  background: #fcfbfa;
+}
+.barcode-print-specs h3 {
+  margin: 0 0 9px;
+  color: #465156;
+  font-size: 10px;
+}
+.barcode-print-specs dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.barcode-print-specs dl > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.barcode-print-specs dt {
+  color: #929b94;
+  font-size: 8px;
+}
+.barcode-print-specs dd {
+  margin: 0;
+  color: #465156;
+  font-size: 9px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
 .label-support-panel {
   margin-top: 18px;
   padding: 15px;
@@ -4831,6 +4886,12 @@ button {
   .product-detail-modal {
     padding: 19px;
   }
+  .barcode-print-specs {
+    padding: 10px;
+  }
+  .barcode-print-specs dl {
+    grid-template-columns: 1fr 1fr;
+  }
   .label-support-panel {
     padding: 10px;
   }
@@ -4965,6 +5026,12 @@ button {
 }
 .product-description-field {
   grid-column: 1 / -1;
+}
+.ribbon-editor-fields {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 11px;
 }
 .product-label-editor {
   margin-top: 1px;
@@ -5182,6 +5249,10 @@ button {
   }
   .product-editor-fields .field-label {
     font-size: 8px;
+  }
+  .ribbon-editor-fields {
+    grid-template-columns: 1fr 1fr;
+    gap: 0 8px;
   }
   .sensor-editor-grid {
     grid-template-columns: 1fr;

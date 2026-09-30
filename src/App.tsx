@@ -301,6 +301,7 @@ function getVideoPreviewUrl(rawUrl: string) {
 
 type ProductCompatibilityPair = { system: string; connection: string };
 type BluetoothDeviceSupport = "single" | "middle" | "up-to-10" | "other-device";
+type BarcodePrintingMethod = "direct-thermal" | "thermal-transfer" | "both";
 const compatibilitySystems = ["Windows", "Android", "iOS", "macOS"];
 const compatibilityConnections = ["Bluetooth", "USB", "Ethernet"];
 
@@ -313,6 +314,9 @@ type Product = {
   systems: string[];
   driverDownloadUrl?: string;
   bluetoothDeviceSupport?: BluetoothDeviceSupport;
+  barcodePrintingMethod?: BarcodePrintingMethod;
+  ribbonWidthMm?: number;
+  ribbonLengthM?: number;
   compatibilityPairs?: ProductCompatibilityPair[];
   appSupport?: Record<string, AppSupportStatus>;
   accent: string;
@@ -769,6 +773,7 @@ function App() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Semua kategori");
   const [connection, setConnection] = useState("Semua koneksi");
+  const [labelVerification, setLabelVerification] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [openIssue, setOpenIssue] = useState<string | null>(
     issueItems[0]?.id ?? null,
@@ -1668,8 +1673,11 @@ function App() {
   const filteredProducts = useMemo(
     () =>
       productItems.filter((product) => {
+        const verificationLabel = product.labelSupport?.demoData
+          ? "belum diverifikasi"
+          : "terverifikasi";
         const matchesQuery =
-          `${product.name} ${product.code} ${product.brand} ${product.category} ${product.connections.join(" ")}`
+          `${product.name} ${product.code} ${product.brand} ${product.category} ${product.connections.join(" ")} ${verificationLabel}`
             .toLowerCase()
             .includes(query.toLowerCase());
         const matchesCategory =
@@ -1677,9 +1685,19 @@ function App() {
         const matchesConnection =
           connection === "Semua koneksi" ||
           product.connections.includes(connection);
-        return matchesQuery && matchesCategory && matchesConnection;
+        const matchesVerification =
+          labelVerification === "all" ||
+          (product.category === "Barcode Printer" &&
+            product.labelSupport?.demoData ===
+              (labelVerification === "unverified"));
+        return (
+          matchesQuery &&
+          matchesCategory &&
+          matchesConnection &&
+          matchesVerification
+        );
       }),
-    [category, connection, productItems, query],
+    [category, connection, labelVerification, productItems, query],
   );
   const filteredIssues = useMemo(
     () =>
@@ -2106,7 +2124,7 @@ function App() {
             </section>
             <footer className="page-footer">
               <span>
-                © 2024 Codeshop Technical Hub - Dikembangkan oleh Krisna
+                © 2026 Codeshop Technical Hub - Dikembangkan oleh Krisna
               </span>
               <span>
                 <i /> Informasi diperbarui hari ini
@@ -2161,6 +2179,15 @@ function App() {
                 <option>USB</option>
                 <option>Ethernet</option>
               </select>
+              <select
+                aria-label="Filter verifikasi dukungan label barcode"
+                value={labelVerification}
+                onChange={(event) => setLabelVerification(event.target.value)}
+              >
+                <option value="all">Semua status label</option>
+                <option value="unverified">Belum diverifikasi</option>
+                <option value="verified">Terverifikasi</option>
+              </select>
             </div>
             <div className="results-caption">
               <span>
@@ -2195,6 +2222,7 @@ function App() {
                     setQuery("");
                     setCategory("Semua kategori");
                     setConnection("Semua koneksi");
+                    setLabelVerification("all");
                   }}
                 >
                   Hapus semua filter
@@ -3240,6 +3268,46 @@ function ProductDetailsModal({
             </div>
           )}
         </div>
+        {product.category === "Barcode Printer" && (
+          <section className="barcode-print-specs">
+            <h3>Metode cetak</h3>
+            <dl>
+              <div>
+                <dt>Metode</dt>
+                <dd>
+                  {product.barcodePrintingMethod === "direct-thermal"
+                    ? "Direct thermal"
+                    : product.barcodePrintingMethod === "thermal-transfer"
+                      ? "Thermal transfer"
+                      : product.barcodePrintingMethod === "both"
+                        ? "Direct thermal & thermal transfer"
+                        : "Belum ditentukan"}
+                </dd>
+              </div>
+              {(product.barcodePrintingMethod === "thermal-transfer" ||
+                product.barcodePrintingMethod === "both") && (
+                <>
+                  <div>
+                    <dt>Lebar ribbon</dt>
+                    <dd>
+                      {product.ribbonWidthMm
+                        ? `${product.ribbonWidthMm} mm`
+                        : "Belum ditentukan"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Panjang ribbon</dt>
+                    <dd>
+                      {product.ribbonLengthM
+                        ? `${product.ribbonLengthM} meter`
+                        : "Belum ditentukan"}
+                    </dd>
+                  </div>
+                </>
+              )}
+            </dl>
+          </section>
+        )}
         {product.category === "Thermal Printer" && (
           <section className="product-app-support">
             <div className="product-app-support-heading">
@@ -3466,7 +3534,7 @@ function SoftwareCatalogPage(props: SoftwareCatalogPageProps) {
       <div className="page-title-row">
         <div>
           <p className="eyebrow">SOFTWARE CENTER</p>
-          <h1>Software & driver</h1>
+          <h1>Software & Utility</h1>
           <p className="welcome-copy">
             Temukan aplikasi dan driver pendukung perangkat Codeshop.
           </p>
@@ -3560,7 +3628,7 @@ function SoftwareCatalogPage(props: SoftwareCatalogPageProps) {
                 maxLength={40}
                 value={props.version}
                 onChange={(event) => props.setVersion(event.target.value)}
-                placeholder="Contoh: 2024 R8"
+                placeholder="Contoh: 2026 R8"
               />
             </label>
             <label className="field-label software-form-wide">
@@ -4996,15 +5064,24 @@ function ProductEditorModal({
               value={draft.category}
               onChange={(event) => {
                 const nextCategory = event.target.value;
-                setField("category", nextCategory);
-                setField(
-                  "icon",
-                  nextCategory === "Barcode Printer"
-                    ? "tag"
-                    : nextCategory === "Barcode Scanner"
-                      ? "scan"
-                      : "printer",
-                );
+                setDraft((current) => {
+                  const next = {
+                    ...current,
+                    category: nextCategory,
+                    icon:
+                      nextCategory === "Barcode Printer"
+                        ? "tag"
+                        : nextCategory === "Barcode Scanner"
+                          ? "scan"
+                          : "printer",
+                  };
+                  if (nextCategory !== "Barcode Printer") {
+                    delete next.barcodePrintingMethod;
+                    delete next.ribbonWidthMm;
+                    delete next.ribbonLengthM;
+                  }
+                  return next;
+                });
               }}
             >
               <option>Thermal Printer</option>
@@ -5014,6 +5091,79 @@ function ProductEditorModal({
               <option>Lainnya</option>
             </select>
           </label>
+          {draft.category === "Barcode Printer" && (
+            <label className="field-label">
+              Metode cetak
+              <select
+                required
+                value={draft.barcodePrintingMethod ?? ""}
+                onChange={(event) => {
+                  const method = event.target.value as
+                    | BarcodePrintingMethod
+                    | "";
+                  setDraft((current) => {
+                    const next = { ...current };
+                    if (method) next.barcodePrintingMethod = method;
+                    else delete next.barcodePrintingMethod;
+                    if (method !== "thermal-transfer" && method !== "both") {
+                      delete next.ribbonWidthMm;
+                      delete next.ribbonLengthM;
+                    }
+                    return next;
+                  });
+                }}
+              >
+                <option value="">Pilih metode</option>
+                <option value="direct-thermal">Direct thermal</option>
+                <option value="thermal-transfer">Thermal transfer</option>
+                <option value="both">Keduanya</option>
+              </select>
+            </label>
+          )}
+          {draft.category === "Barcode Printer" &&
+            (draft.barcodePrintingMethod === "thermal-transfer" ||
+              draft.barcodePrintingMethod === "both") && (
+              <div className="ribbon-editor-fields">
+                <label className="field-label">
+                  Lebar ribbon (mm){" "}
+                  <span className="optional-label">Opsional</span>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    value={draft.ribbonWidthMm ?? ""}
+                    onChange={(event) =>
+                      setField(
+                        "ribbonWidthMm",
+                        event.target.value
+                          ? Number(event.target.value)
+                          : undefined,
+                      )
+                    }
+                    placeholder="Belum ditentukan"
+                  />
+                </label>
+                <label className="field-label">
+                  Panjang ribbon (meter){" "}
+                  <span className="optional-label">Opsional</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={draft.ribbonLengthM ?? ""}
+                    onChange={(event) =>
+                      setField(
+                        "ribbonLengthM",
+                        event.target.value
+                          ? Number(event.target.value)
+                          : undefined,
+                      )
+                    }
+                    placeholder="Contoh: 74 atau 300"
+                  />
+                </label>
+              </div>
+            )}
           <label className="field-label">
             Status
             <select
@@ -5461,6 +5611,15 @@ function ProductCard({
         </button>
       </div>
       <span className="product-category">{product.category}</span>
+      {product.category === "Barcode Printer" && (
+        <span
+          className={`product-verification-badge ${product.labelSupport?.demoData ? "unverified" : "verified"}`}
+        >
+          {product.labelSupport?.demoData
+            ? "Belum diverifikasi"
+            : "Terverifikasi"}
+        </span>
+      )}
       <h3>{product.name}</h3>
       <p>
         {product.brand} <i>·</i> {product.code}
