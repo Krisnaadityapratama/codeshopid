@@ -985,7 +985,7 @@ function App() {
   useEffect(() => {
     if (!authReady) return;
     const syncAuthRoute = () => {
-      const expectedPath = activeUser ? "/dashboard" : "/";
+      const expectedPath = "/";
       if (window.location.pathname !== expectedPath) {
         window.history.replaceState(
           null,
