@@ -317,6 +317,7 @@ type Product = {
   barcodePrintingMethod?: BarcodePrintingMethod;
   ribbonWidthMm?: number;
   ribbonLengthM?: number;
+  ribbonNote?: string;
   compatibilityPairs?: ProductCompatibilityPair[];
   appSupport?: Record<string, AppSupportStatus>;
   accent: string;
@@ -3303,6 +3304,12 @@ function ProductDetailsModal({
                         : "Belum ditentukan"}
                     </dd>
                   </div>
+                  {product.ribbonNote && (
+                    <div className="barcode-ribbon-note">
+                      <dt>Catatan ribbon</dt>
+                      <dd>{product.ribbonNote}</dd>
+                    </div>
+                  )}
                 </>
               )}
             </dl>
@@ -5108,6 +5115,7 @@ function ProductEditorModal({
                     if (method !== "thermal-transfer" && method !== "both") {
                       delete next.ribbonWidthMm;
                       delete next.ribbonLengthM;
+                      delete next.ribbonNote;
                     }
                     return next;
                   });
@@ -5160,6 +5168,18 @@ function ProductEditorModal({
                       )
                     }
                     placeholder="Contoh: 74 atau 300"
+                  />
+                </label>
+                <label className="field-label ribbon-note-field">
+                  Catatan ribbon{" "}
+                  <span className="optional-label">Opsional</span>
+                  <textarea
+                    rows={3}
+                    value={draft.ribbonNote ?? ""}
+                    onChange={(event) =>
+                      setField("ribbonNote", event.target.value || undefined)
+                    }
+                    placeholder="Contoh: gunakan ribbon wax-resin"
                   />
                 </label>
               </div>

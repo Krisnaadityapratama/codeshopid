@@ -4648,6 +4648,9 @@ button {
   flex-direction: column;
   gap: 4px;
 }
+.barcode-print-specs .barcode-ribbon-note {
+  grid-column: 1 / -1;
+}
 .barcode-print-specs dt {
   color: #929b94;
   font-size: 8px;
@@ -5003,6 +5006,7 @@ button {
 }
 .product-editor-fields input,
 .product-editor-fields select,
+.product-editor-fields textarea,
 .product-label-editor input:not([type="checkbox"]),
 .product-label-editor textarea {
   width: 100%;
@@ -5017,8 +5021,15 @@ button {
   font-size: 9px;
   font-weight: 400;
 }
+.product-editor-fields textarea {
+  height: auto;
+  min-height: 64px;
+  padding: 9px;
+  resize: vertical;
+}
 .product-editor-fields input:focus,
 .product-editor-fields select:focus,
+.product-editor-fields textarea:focus,
 .product-label-editor input:focus,
 .product-label-editor textarea:focus {
   border-color: #91a6b1;
@@ -5032,6 +5043,9 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 11px;
+}
+.ribbon-note-field {
+  grid-column: 1 / -1;
 }
 .product-label-editor {
   margin-top: 1px;
