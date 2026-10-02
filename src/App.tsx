@@ -30,7 +30,7 @@ type Page =
   | "Tutorial"
   | "Playlist Tutorial"
   | "Users";
-type UserRole = "admin" | "sales";
+type UserRole = "owner" | "admin" | "sales";
 type DemoUser = {
   id: string;
   name: string;
@@ -767,6 +767,7 @@ function App() {
   const [userEmail, setUserEmail] = useState("");
   const [userPassword, setUserPassword] = useState("");
   const [userRole, setUserRole] = useState<UserRole>("sales");
+  const [editingUser, setEditingUser] = useState<DemoUser | null>(null);
   const [userFormError, setUserFormError] = useState("");
   const [showUserForm, setShowUserForm] = useState(false);
   const [userNotice, setUserNotice] = useState("");
@@ -828,7 +829,7 @@ function App() {
         let nextPlaylists = playlistsFromDatabase;
         let nextIposArticles = iposFromDatabase;
         if (
-          profile.role === "admin" &&
+          profile.role === "owner" &&
           localStorage.getItem(LEGACY_IMPORT_KEY) !== "done"
         ) {
           const iposLegacy: IposArticle[] = [
@@ -917,7 +918,7 @@ function App() {
           localStorage.setItem(LEGACY_IMPORT_KEY, "done");
         }
         const profiles =
-          profile.role === "admin" ? await loadProfiles() : [profile];
+          profile.role === "owner" ? await loadProfiles() : [profile];
         if (cancelled || requestId !== workspaceRequestId.current) return;
         setActiveUser(mapProfile(profile));
         setUsers(profiles.map(mapProfile));
@@ -1000,7 +1001,8 @@ function App() {
   }, [activeUser, authReady]);
 
   const products = productItems;
-  const isAdmin = activeUser?.role === "admin";
+  const isAdmin = activeUser?.role === "owner" || activeUser?.role === "admin";
+  const isOwner = activeUser?.role === "owner";
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoginError("");
@@ -1030,9 +1032,36 @@ function App() {
     setLoginPassword("");
   };
 
+  const closeUserForm = () => {
+    setShowUserForm(false);
+    setEditingUser(null);
+    setUserName("");
+    setUserEmail("");
+    setUserPassword("");
+    setUserRole("sales");
+    setUserFormError("");
+  };
+
+  const openAddUserForm = () => {
+    closeUserForm();
+    setShowUserForm(true);
+  };
+
+  const openEditUserForm = (user: DemoUser) => {
+    if (!isOwner || user.role === "owner") return;
+    setEditingUser(user);
+    setUserName(user.name);
+    setUserEmail(user.email);
+    setUserPassword("");
+    setUserRole(user.role);
+    setUserFormError("");
+    setShowUserForm(true);
+  };
+
   const handleAddUser = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!isAdmin) return;
+    if (!isOwner) return;
+    const savedName = userName.trim();
     const normalizedEmail = userEmail.trim().toLowerCase();
     if (users.some((user) => user.email.toLowerCase() === normalizedEmail)) {
       setUserFormError("Email sudah digunakan.");
@@ -1044,7 +1073,7 @@ function App() {
     }
     try {
       await manageUser("create", {
-        name: userName.trim(),
+        name: savedName,
         email: normalizedEmail,
         password: userPassword,
         role: userRole,
@@ -1056,22 +1085,49 @@ function App() {
       );
       return;
     }
-    setUserName("");
-    setUserEmail("");
-    setUserPassword("");
-    setUserRole("sales");
-    setUserFormError("");
-    setShowUserForm(false);
-    setUserNotice(`${userName.trim()} berhasil ditambahkan.`);
+    closeUserForm();
+    setUserNotice(`${savedName} berhasil ditambahkan.`);
+  };
+
+  const handleEditUser = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!isOwner || !editingUser) return;
+    const savedName = userName.trim();
+    const normalizedEmail = userEmail.trim().toLowerCase();
+    if (
+      users.some(
+        (user) =>
+          user.id !== editingUser.id &&
+          user.email.toLowerCase() === normalizedEmail,
+      )
+    ) {
+      setUserFormError("Email sudah digunakan.");
+      return;
+    }
+    try {
+      await manageUser("update", {
+        userId: editingUser.id,
+        name: savedName,
+        email: normalizedEmail,
+        role: userRole,
+      });
+      setUsers((await loadProfiles()).map(mapProfile));
+    } catch (error) {
+      setUserFormError(
+        error instanceof Error
+          ? error.message
+          : "Pengguna tidak dapat diperbarui.",
+      );
+      return;
+    }
+    closeUserForm();
+    setUserNotice(`${savedName} berhasil diperbarui.`);
   };
 
   const handleDeleteUser = async (user: DemoUser) => {
-    if (!isAdmin || user.id === activeUser?.id) return;
-    if (
-      user.role === "admin" &&
-      users.filter((candidate) => candidate.role === "admin").length <= 1
-    ) {
-      setUserNotice("Admin utama terakhir tidak dapat dihapus.");
+    if (!isOwner || user.id === activeUser?.id) return;
+    if (user.role === "owner") {
+      setUserNotice("Akun Admin Utama tidak dapat dihapus dari menu ini.");
       return;
     }
     if (
@@ -1711,7 +1767,7 @@ function App() {
   );
 
   const goTo = (target: Page) => {
-    if (target === "Users" && !isAdmin) return;
+    if (target === "Users" && !isOwner) return;
     setPage(target);
     setMobileNavOpen(false);
     setQuery("");
@@ -1735,7 +1791,7 @@ function App() {
         pair.system === compatSystem && pair.connection === compatConnection,
     ),
   );
-  const navGroups = isAdmin
+  const navGroups = isOwner
     ? ["WORKSPACE", "RESOURCES", "ADMINISTRATION"]
     : ["WORKSPACE", "RESOURCES"];
 
@@ -1805,9 +1861,6 @@ function App() {
                     <span>
                       {item.label === "Users" ? "Kelola pengguna" : item.label}
                     </span>
-                    {item.label === "Troubleshooting" && (
-                      <span className="nav-count">{issueItems.length}</span>
-                    )}
                   </button>
                 ))}
             </div>
@@ -1821,9 +1874,11 @@ function App() {
             <span>
               <strong>{activeUser.name}</strong>
               <small>
-                {activeUser.role === "admin"
+                {activeUser.role === "owner"
                   ? "Admin Utama"
-                  : "Sales · hanya melihat"}
+                  : activeUser.role === "admin"
+                    ? "Admin"
+                    : "Sales · hanya melihat"}
               </small>
             </span>
           </div>
@@ -1888,7 +1943,11 @@ function App() {
               <span
                 className={`role-pill ${isAdmin ? "role-admin" : "role-sales"}`}
               >
-                {isAdmin ? "Admin Utama" : "Sales · akses lihat"}
+                {activeUser.role === "owner"
+                  ? "Admin Utama"
+                  : activeUser.role === "admin"
+                    ? "Admin · edit konten"
+                    : "Sales · akses lihat"}
               </span>
             </section>
             <section className="hero-card">
@@ -2948,7 +3007,7 @@ function App() {
             </div>
           </div>
         )}
-        {page === "Users" && isAdmin && (
+        {page === "Users" && isOwner && (
           <div className="page-content inner-page users-page">
             <div className="page-title-row">
               <div>
@@ -2961,8 +3020,8 @@ function App() {
               <button
                 className="button-primary"
                 onClick={() => {
-                  setShowUserForm(!showUserForm);
-                  setUserFormError("");
+                  if (showUserForm) closeUserForm();
+                  else openAddUserForm();
                 }}
               >
                 <Icon name={showUserForm ? "down" : "plus"} size={16} />{" "}
@@ -2977,10 +3036,22 @@ function App() {
                 <span>
                   <small>ADMIN UTAMA</small>
                   <strong>
-                    {users.filter((user) => user.role === "admin").length}
+                    {users.filter((user) => user.role === "owner").length}
                   </strong>
                 </span>
                 <p>Akses penuh + kelola pengguna</p>
+              </div>
+              <div className="role-summary-card">
+                <span className="summary-icon admin-summary">
+                  <Icon name="box" size={18} />
+                </span>
+                <span>
+                  <small>ADMIN</small>
+                  <strong>
+                    {users.filter((user) => user.role === "admin").length}
+                  </strong>
+                </span>
+                <p>Edit seluruh konten</p>
               </div>
               <div className="role-summary-card">
                 <span className="summary-icon sales-summary">
@@ -3008,15 +3079,20 @@ function App() {
               </div>
             )}
             {showUserForm && (
-              <form className="add-user-form panel" onSubmit={handleAddUser}>
+              <form
+                className="add-user-form panel"
+                onSubmit={editingUser ? handleEditUser : handleAddUser}
+              >
                 <div className="form-heading">
                   <span className="form-icon">
-                    <Icon name="plus" size={19} />
+                    <Icon name={editingUser ? "check" : "plus"} size={19} />
                   </span>
                   <div>
-                    <h2>Pengguna baru</h2>
+                    <h2>{editingUser ? "Edit pengguna" : "Pengguna baru"}</h2>
                     <p>
-                      Admin utama dapat menambahkan admin lain atau akun Sales.
+                      {editingUser
+                        ? "Perbarui nama, email, atau role akun."
+                        : "Admin Utama dapat menambahkan Admin atau akun Sales."}
                     </p>
                   </div>
                 </div>
@@ -3040,17 +3116,21 @@ function App() {
                       placeholder="nama@codeshop.test"
                     />
                   </label>
-                  <label className="field-label">
-                    Password sementara
-                    <input
-                      required
-                      minLength={8}
-                      type="password"
-                      value={userPassword}
-                      onChange={(event) => setUserPassword(event.target.value)}
-                      placeholder="Minimal 8 karakter"
-                    />
-                  </label>
+                  {!editingUser && (
+                    <label className="field-label">
+                      Password sementara
+                      <input
+                        required
+                        minLength={8}
+                        type="password"
+                        value={userPassword}
+                        onChange={(event) =>
+                          setUserPassword(event.target.value)
+                        }
+                        placeholder="Minimal 8 karakter"
+                      />
+                    </label>
+                  )}
                   <label className="field-label">
                     Role
                     <select
@@ -3060,16 +3140,30 @@ function App() {
                       }
                     >
                       <option value="sales">Sales — hanya melihat</option>
-                      <option value="admin">Admin Utama — akses penuh</option>
+                      <option value="admin">Admin — edit seluruh konten</option>
                     </select>
                   </label>
                 </div>
                 {userFormError && <p className="form-error">{userFormError}</p>}
                 <div className="user-form-footer">
-                  <span>Password dikelola aman oleh Supabase Auth.</span>
-                  <button className="button-primary" type="submit">
-                    Buat pengguna <Icon name="arrow" size={15} />
-                  </button>
+                  <span>
+                    {editingUser
+                      ? "Perubahan email disinkronkan ke Supabase Auth."
+                      : "Password dikelola aman oleh Supabase Auth."}
+                  </span>
+                  <div className="user-form-actions">
+                    <button
+                      className="button-secondary"
+                      type="button"
+                      onClick={closeUserForm}
+                    >
+                      Batal
+                    </button>
+                    <button className="button-primary" type="submit">
+                      {editingUser ? "Simpan perubahan" : "Buat pengguna"}{" "}
+                      <Icon name="arrow" size={15} />
+                    </button>
+                  </div>
                 </div>
               </form>
             )}
@@ -3088,7 +3182,7 @@ function App() {
                       <th>Pengguna</th>
                       <th>Role</th>
                       <th>Dibuat</th>
-                      <th>Akses</th>
+                      <th>Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3110,7 +3204,11 @@ function App() {
                         </td>
                         <td>
                           <span className={`user-role-tag ${user.role}`}>
-                            {user.role === "admin" ? "Admin Utama" : "Sales"}
+                            {user.role === "owner"
+                              ? "Admin Utama"
+                              : user.role === "admin"
+                                ? "Admin"
+                                : "Sales"}
                           </span>
                         </td>
                         <td>
@@ -3122,14 +3220,24 @@ function App() {
                         <td>
                           {user.id === activeUser.id ? (
                             <span className="current-account">Akun Anda</span>
+                          ) : user.role === "owner" ? (
+                            <span className="current-account">Admin Utama</span>
                           ) : (
-                            <button
-                              className="delete-user-button"
-                              onClick={() => handleDeleteUser(user)}
-                              aria-label={`Hapus pengguna ${user.name}`}
-                            >
-                              Hapus
-                            </button>
+                            <div className="user-row-actions">
+                              <button
+                                className="edit-user-button"
+                                onClick={() => openEditUserForm(user)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                className="delete-user-button"
+                                onClick={() => handleDeleteUser(user)}
+                                aria-label={`Hapus pengguna ${user.name}`}
+                              >
+                                Hapus
+                              </button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -3140,10 +3248,14 @@ function App() {
             </section>
             <div className="demo-warning">
               <Icon name="shield" size={17} />
-              <span>
-                <strong>Akses server terlindungi.</strong> Akun menggunakan
-                Supabase Auth, sementara role admin dan Sales divalidasi oleh
-                Row Level Security.
+              <span
+                className={`role-pill ${isAdmin ? "role-admin" : "role-sales"}`}
+              >
+                {activeUser.role === "owner"
+                  ? "Admin Utama"
+                  : activeUser.role === "admin"
+                    ? "Admin · edit konten"
+                    : "Sales · akses lihat"}
               </span>
             </div>
           </div>
@@ -3785,7 +3897,7 @@ function SoftwareCatalogPage(props: SoftwareCatalogPageProps) {
           <p>
             {search || platformFilter !== "Semua platform"
               ? "Coba kata kunci atau platform lain."
-              : "Software yang ditambahkan Admin Utama akan muncul di katalog ini."}
+              : "Software yang ditambahkan Admin akan muncul di katalog ini."}
           </p>
           {props.isAdmin && !search && (
             <button className="button-primary" onClick={props.onAdd}>

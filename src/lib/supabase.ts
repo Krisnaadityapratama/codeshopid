@@ -23,7 +23,7 @@ export type ContentCollection =
   | "tutorials"
   | "playlists"
   | "ipos";
-export type UserRole = "admin" | "sales";
+export type UserRole = "owner" | "admin" | "sales";
 export type AppProfile = {
   id: string;
   name: string;
@@ -98,7 +98,7 @@ export async function loadProfiles(): Promise<AppProfile[]> {
 }
 
 export async function manageUser(
-  action: "create" | "delete",
+  action: "create" | "update" | "delete",
   payload: Record<string, unknown>,
 ) {
   const { data, error } = await getClient().functions.invoke("manage-user", {

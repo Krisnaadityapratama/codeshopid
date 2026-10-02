@@ -2828,7 +2828,7 @@ button {
 .role-summary-grid {
   margin-bottom: 15px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 .role-summary-card {
@@ -2930,6 +2930,15 @@ button {
   color: #98a198;
   font-size: 8px;
 }
+.user-form-actions,
+.user-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.user-form-actions {
+  flex-shrink: 0;
+}
 .users-panel {
   overflow: hidden;
 }
@@ -2988,6 +2997,7 @@ button {
   font-size: 8px;
   font-weight: 700;
 }
+.user-avatar.owner,
 .user-avatar.admin {
   color: #526d7a;
   background: #e8eef1;
@@ -3024,6 +3034,7 @@ button {
   border-radius: 5px;
   font-size: 8px;
 }
+.user-role-tag.owner,
 .user-role-tag.admin {
   color: #556d79;
   background: #edf2f4;
@@ -3035,6 +3046,18 @@ button {
 .current-account {
   color: #8a958d;
   font-size: 8px;
+}
+.edit-user-button {
+  padding: 5px 8px;
+  border: 1px solid #dce8ec;
+  border-radius: 5px;
+  color: #356d80;
+  background: #f1f7f8;
+  font-size: 8px;
+}
+.edit-user-button:hover {
+  border-color: #b8d0d9;
+  background: #e7f1f4;
 }
 .delete-user-button {
   padding: 5px 8px;
@@ -3088,6 +3111,7 @@ button {
   }
   .role-summary-grid {
     gap: 8px;
+    grid-template-columns: 1fr;
   }
   .role-summary-card {
     min-height: 79px;
