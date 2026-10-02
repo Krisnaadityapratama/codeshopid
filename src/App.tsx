@@ -303,7 +303,7 @@ type ProductCompatibilityPair = { system: string; connection: string };
 type BluetoothDeviceSupport = "single" | "middle" | "up-to-10" | "other-device";
 type BarcodePrintingMethod = "direct-thermal" | "thermal-transfer" | "both";
 const compatibilitySystems = ["Windows", "Android", "iOS", "macOS"];
-const compatibilityConnections = ["Bluetooth", "USB", "Ethernet"];
+const compatibilityConnections = ["Bluetooth", "USB", "Serial", "Ethernet"];
 
 type Product = {
   name: string;
@@ -773,7 +773,7 @@ function App() {
   const [page, setPage] = useState<Page>("Home");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Semua kategori");
-  const [connection, setConnection] = useState("Semua koneksi");
+  const [selectedConnections, setSelectedConnections] = useState<string[]>([]);
   const [labelVerification, setLabelVerification] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [openIssue, setOpenIssue] = useState<string | null>(
@@ -1683,9 +1683,9 @@ function App() {
             .includes(query.toLowerCase());
         const matchesCategory =
           category === "Semua kategori" || product.category === category;
-        const matchesConnection =
-          connection === "Semua koneksi" ||
-          product.connections.includes(connection);
+        const matchesConnections = selectedConnections.every((item) =>
+          product.connections.includes(item),
+        );
         const matchesVerification =
           labelVerification === "all" ||
           (product.category === "Barcode Printer" &&
@@ -1694,11 +1694,11 @@ function App() {
         return (
           matchesQuery &&
           matchesCategory &&
-          matchesConnection &&
+          matchesConnections &&
           matchesVerification
         );
       }),
-    [category, connection, labelVerification, productItems, query],
+    [category, labelVerification, productItems, query, selectedConnections],
   );
   const filteredIssues = useMemo(
     () =>
@@ -2171,15 +2171,27 @@ function App() {
                 <option>Barcode Scanner</option>
                 <option>Barcode Printer</option>
               </select>
-              <select
-                value={connection}
-                onChange={(event) => setConnection(event.target.value)}
-              >
-                <option>Semua koneksi</option>
-                <option>Bluetooth</option>
-                <option>USB</option>
-                <option>Ethernet</option>
-              </select>
+              <fieldset className="connection-filter">
+                <legend>Interface</legend>
+                {compatibilityConnections.map((item) => (
+                  <label key={item}>
+                    <input
+                      type="checkbox"
+                      checked={selectedConnections.includes(item)}
+                      onChange={(event) =>
+                        setSelectedConnections((current) =>
+                          event.target.checked
+                            ? [...current, item]
+                            : current.filter(
+                                (connectionItem) => connectionItem !== item,
+                              ),
+                        )
+                      }
+                    />
+                    {item}
+                  </label>
+                ))}
+              </fieldset>
               <select
                 aria-label="Filter verifikasi dukungan label barcode"
                 value={labelVerification}
@@ -2222,7 +2234,7 @@ function App() {
                   onClick={() => {
                     setQuery("");
                     setCategory("Semua kategori");
-                    setConnection("Semua koneksi");
+                    setSelectedConnections([]);
                     setLabelVerification("all");
                   }}
                 >

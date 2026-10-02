@@ -1069,6 +1069,36 @@ button {
   background: #fff;
   font-size: 10px;
 }
+.connection-filter {
+  min-height: 40px;
+  margin: 0;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #e7eaeb;
+  border-radius: 7px;
+  color: #66716b;
+  background: #fff;
+}
+.connection-filter legend {
+  padding: 0 3px;
+  color: #89938d;
+  font-size: 9px;
+}
+.connection-filter label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.connection-filter input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #38798a;
+}
 .results-caption {
   margin: 19px 0 11px;
   display: flex;
