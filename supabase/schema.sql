@@ -2,10 +2,17 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   name text not null,
   email text not null unique,
-  role text not null default 'sales' check (role in ('admin', 'sales')),
+  role text not null default 'sales' check (role in ('owner', 'admin', 'sales')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.profiles
+  drop constraint if exists profiles_role_check;
+
+alter table public.profiles
+  add constraint profiles_role_check
+  check (role in ('owner', 'admin', 'sales'));
 
 create table if not exists public.app_content (
   collection text not null check (collection in ('products', 'troubleshooting', 'software', 'apps', 'tutorials', 'playlists', 'ipos')),
@@ -48,7 +55,22 @@ as $$
     select 1
     from public.profiles
     where id = (select auth.uid())
-      and role = 'admin'
+      and role in ('owner', 'admin')
+  );
+$$;
+
+create or replace function public.is_owner()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = (select auth.uid())
+      and role = 'owner'
   );
 $$;
 
@@ -59,14 +81,20 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, name, email)
+  insert into public.profiles as existing_profile (id, name, email, role)
   values (
     new.id,
     coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), split_part(new.email, '@', 1)),
-    lower(new.email)
+    lower(new.email),
+    case when lower(new.email) = 'krisnaadityapratamaaa@gmail.com' then 'owner' else 'sales' end
   )
   on conflict (id) do update
-    set email = excluded.email;
+    set email = excluded.email,
+        role = case
+          when excluded.role = 'owner' then 'owner'
+          when existing_profile.role = 'owner' then 'admin'
+          else existing_profile.role
+        end;
   return new;
 end;
 $$;
@@ -76,15 +104,34 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute procedure public.handle_new_auth_user();
 
-insert into public.profiles (id, name, email)
+insert into public.profiles as existing_profile (id, name, email, role)
 select
   id,
   coalesce(nullif(raw_user_meta_data ->> 'full_name', ''), split_part(email, '@', 1)),
-  lower(email)
+  lower(email),
+  case when lower(email) = 'krisnaadityapratamaaa@gmail.com' then 'owner' else 'sales' end
 from auth.users
 where email is not null
 on conflict (id) do update
-  set email = excluded.email;
+  set email = excluded.email,
+      role = case
+        when excluded.role = 'owner' then 'owner'
+        when existing_profile.role = 'owner' then 'admin'
+        else existing_profile.role
+      end;
+
+update public.profiles
+set role = 'admin'
+where role = 'owner'
+  and lower(email) <> 'krisnaadityapratamaaa@gmail.com';
+
+update public.profiles
+set role = 'owner'
+where lower(email) = 'krisnaadityapratamaaa@gmail.com';
+
+create unique index if not exists profiles_single_owner_idx
+  on public.profiles (role)
+  where role = 'owner';
 
 drop trigger if exists profiles_set_updated_at on public.profiles;
 create trigger profiles_set_updated_at
@@ -100,9 +147,10 @@ alter table public.profiles enable row level security;
 alter table public.app_content enable row level security;
 
 drop policy if exists "Profiles are visible to self and admins" on public.profiles;
-create policy "Profiles are visible to self and admins"
+drop policy if exists "Profiles are visible to self and owner" on public.profiles;
+create policy "Profiles are visible to self and owner"
 on public.profiles for select to authenticated
-using (id = (select auth.uid()) or (select public.is_admin()));
+using (id = (select auth.uid()) or (select public.is_owner()));
 
 drop policy if exists "Authenticated users can read content" on public.app_content;
 create policy "Authenticated users can read content"
@@ -129,6 +177,7 @@ grant usage on schema public to authenticated;
 grant select on public.profiles to authenticated;
 grant select, insert, update, delete on public.app_content to authenticated;
 grant execute on function public.is_admin() to authenticated;
+grant execute on function public.is_owner() to authenticated;
 
 insert into public.app_content (collection, record_id, payload)
 values

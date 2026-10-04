@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+*.json
+supabase/.temp/cli-latest
+*.json
+package-lock.json
+package.json
+supabase/functions/manage-user/index.ts
+supabase/schema.sql
