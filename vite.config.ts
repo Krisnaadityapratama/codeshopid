@@ -1,4 +1,4 @@
-import { copyFileSync } from "node:fs";
+import { copyFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
@@ -35,6 +35,12 @@ function generatorRoute(): Plugin {
         copyFileSync(
           resolve(process.cwd(), "GeneratorCodeshop.html"),
           resolve(process.cwd(), "dist", "GeneratorCodeshop.html"),
+        );
+        const generatorOutput = resolve(process.cwd(), "dist", "generator");
+        mkdirSync(generatorOutput, { recursive: true });
+        copyFileSync(
+          resolve(process.cwd(), "GeneratorCodeshop.html"),
+          resolve(generatorOutput, "index.html"),
         );
       }
     },
