@@ -1,10 +1,10 @@
 # Codeshop Technical Hub
 
-The application uses Supabase Auth for sessions, `profiles` for account roles, and the `app_content` table for products, troubleshooting articles, software, tutorials, playlists, and IPOS help articles.
+The application uses Supabase Auth for sessions, `profiles` for account roles, the `app_content` table for knowledge-base content, and the `requests` table for shared Sales requests.
 
 ## Supabase Setup
 
-1. Open the Supabase project SQL Editor and run [`supabase/schema.sql`](supabase/schema.sql). It creates the tables, profile trigger, Row Level Security policies, and starter content.
+1. Open the Supabase project SQL Editor and run the latest [`supabase/schema.sql`](supabase/schema.sql). It creates the tables, profile trigger, Row Level Security policies, and starter content. Run the updated schema before using shared requests so the `requests` table and its access policies exist.
 2. In Supabase Authentication, create the first user with an email and password.
 3. Promote that user to the initial administrator by running this SQL with the same email:
 
@@ -36,9 +36,12 @@ The application uses Supabase Auth for sessions, `profiles` for account roles, a
 
 - Authenticated users can read the knowledge-base content.
 - Only profiles with `role = 'admin'` can create, update, or delete content. PostgreSQL RLS enforces this even if someone bypasses the UI.
+- All authenticated users can read the shared request list. Sales can submit requests; admins can process, complete, cancel, or reject them with a required reason.
+- All authenticated users can read shared requests. Sales can create requests, while admins can move them to processing or reject them with a required reason.
 - User creation and deletion use the `manage-user` Edge Function because the Auth Admin API must never run with a service-role key in the browser.
 - New Auth users receive a `sales` profile by default. Promote the first administrator with the SQL above.
 - Content rows use `(collection, record_id)` as their key. App data is stored in JSONB payloads so product specifications and playlist lessons retain their shape.
+- Product documentation records a product name, setup description, and whether DIP Switch settings exist. DIP Switch numbers are stored as text, so values such as `DIP 1-2` are supported; administrators can add multiple switch-purpose rows, while other roles can view them.
 
 ## Existing Browser Data
 

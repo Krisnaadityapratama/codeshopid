@@ -15,7 +15,7 @@ alter table public.profiles
   check (role in ('owner', 'admin', 'sales'));
 
 create table if not exists public.app_content (
-  collection text not null check (collection in ('products', 'troubleshooting', 'software', 'apps', 'tutorials', 'playlists', 'ipos')),
+  collection text not null check (collection in ('products', 'troubleshooting', 'software', 'apps', 'tutorials', 'playlists', 'product_documentation', 'ipos')),
   record_id text not null,
   payload jsonb not null,
   created_at timestamptz not null default now(),
@@ -23,12 +23,80 @@ create table if not exists public.app_content (
   primary key (collection, record_id)
 );
 
+create table if not exists public.requests (
+  id uuid primary key default gen_random_uuid(),
+  title text not null check (length(trim(title)) > 0),
+  description text not null check (length(trim(description)) > 0),
+  status text not null default 'pending'
+    check (status in ('pending', 'in_progress', 'rejected')),
+  rejection_reason text,
+  created_by uuid references auth.users (id) on delete set null,
+  created_by_name text not null,
+  processed_by uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (
+    (status = 'rejected' and length(trim(coalesce(rejection_reason, ''))) > 0)
+    or (status <> 'rejected' and rejection_reason is null)
+  ),
+  check (
+    (status = 'pending' and processed_by is null)
+    or (status in ('in_progress', 'rejected') and processed_by is not null)
+  )
+);
+
+do $$
+declare
+  check_constraint record;
+begin
+  for check_constraint in
+    select conname
+    from pg_constraint
+    where conrelid = 'public.requests'::regclass
+      and contype = 'c'
+      and (
+        pg_get_constraintdef(oid) like '%status%'
+        or pg_get_constraintdef(oid) like '%processed_by%'
+      )
+  loop
+    execute format(
+      'alter table public.requests drop constraint %I',
+      check_constraint.conname
+    );
+  end loop;
+end;
+$$;
+
+alter table public.requests
+  add constraint requests_status_check
+  check (status in ('pending', 'in_progress', 'rejected', 'completed', 'cancelled'));
+
+alter table public.requests
+  add constraint requests_rejection_reason_check
+  check (
+    (status = 'rejected' and length(trim(coalesce(rejection_reason, ''))) > 0)
+    or (status <> 'rejected' and rejection_reason is null)
+  );
+
+alter table public.requests
+  add constraint requests_processor_check
+  check (
+    (status = 'pending' and processed_by is null)
+    or (
+      status in ('in_progress', 'rejected', 'completed', 'cancelled')
+      and processed_by is not null
+    )
+  );
+
+create index if not exists requests_created_at_idx
+  on public.requests (created_at desc);
+
 alter table public.app_content
   drop constraint if exists app_content_collection_check;
 
 alter table public.app_content
   add constraint app_content_collection_check
-  check (collection in ('products', 'troubleshooting', 'software', 'apps', 'tutorials', 'playlists', 'ipos'));
+  check (collection in ('products', 'troubleshooting', 'software', 'apps', 'tutorials', 'playlists', 'product_documentation', 'ipos'));
 
 create index if not exists app_content_collection_created_idx
   on public.app_content (collection, created_at);
@@ -143,8 +211,14 @@ create trigger app_content_set_updated_at
 before update on public.app_content
 for each row execute procedure public.set_updated_at();
 
+drop trigger if exists requests_set_updated_at on public.requests;
+create trigger requests_set_updated_at
+before update on public.requests
+for each row execute procedure public.set_updated_at();
+
 alter table public.profiles enable row level security;
 alter table public.app_content enable row level security;
+alter table public.requests enable row level security;
 
 drop policy if exists "Profiles are visible to self and admins" on public.profiles;
 drop policy if exists "Profiles are visible to self and owner" on public.profiles;
@@ -173,11 +247,63 @@ create policy "Admins can delete content"
 on public.app_content for delete to authenticated
 using ((select public.is_admin()));
 
+drop policy if exists "Authenticated users can read requests" on public.requests;
+create policy "Authenticated users can read requests"
+on public.requests for select to authenticated
+using (true);
+
+drop policy if exists "Sales can create requests" on public.requests;
+create policy "Sales can create requests"
+on public.requests for insert to authenticated
+with check (
+  created_by = (select auth.uid())
+  and status = 'pending'
+  and processed_by is null
+  and exists (
+    select 1 from public.profiles
+    where id = (select auth.uid()) and role = 'sales'
+  )
+);
+
+drop policy if exists "Admins can update requests" on public.requests;
+create policy "Admins can update requests"
+on public.requests for update to authenticated
+using ((select public.is_admin()))
+with check (
+  (select public.is_admin())
+  and status in ('in_progress', 'rejected', 'completed', 'cancelled')
+  and processed_by = (select auth.uid())
+  and (
+    (status = 'rejected' and length(trim(coalesce(rejection_reason, ''))) > 0)
+    or (
+      status in ('in_progress', 'completed', 'cancelled')
+      and rejection_reason is null
+    )
+  )
+);
+
 grant usage on schema public to authenticated;
 grant select on public.profiles to authenticated;
 grant select, insert, update, delete on public.app_content to authenticated;
+grant select, insert, update on public.requests to authenticated;
 grant execute on function public.is_admin() to authenticated;
 grant execute on function public.is_owner() to authenticated;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_publication where pubname = 'supabase_realtime'
+  ) and not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'requests'
+  ) then
+    execute 'alter publication supabase_realtime add table public.requests';
+  end if;
+end;
+$$;
 
 insert into public.app_content (collection, record_id, payload)
 values

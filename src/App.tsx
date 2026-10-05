@@ -3,17 +3,26 @@ import AppsCatalogPage, {
   type AppCatalogItem,
   type AppSupportStatus,
 } from "./AppsCatalogPage";
+import ProductDocumentationPage, {
+  type ProductDocumentation,
+} from "./ProductDocumentationPage";
+import RequestsPage from "./RequestsPage";
 import {
+  createRequest,
   deleteContent,
   loadContent,
+  loadRequests,
   loadProfile,
   loadProfiles,
   manageUser,
   saveContent,
+  setRequestStatus,
   supabase,
   supabaseConfigured,
   type AppProfile,
   type ContentCollection,
+  type RequestStatus,
+  type TeamRequest,
 } from "./lib/supabase";
 import brandLogo from "./assets/logo.jpg";
 import "sweetalert2/dist/sweetalert2.min.css";
@@ -26,7 +35,9 @@ type Page =
   | "Compatibility"
   | "Software"
   | "Apps"
-  | "IPOS"
+  | "Generator"
+  | "Dokumentasi Produk"
+  | "Permintaan"
   | "Tutorial"
   | "Playlist Tutorial"
   | "Users";
@@ -81,8 +92,6 @@ type TroubleshootingIssue = {
   cause: string;
   steps: string[];
 };
-type IposArticle = { id: string; title: string; text: string };
-
 const USERS_STORAGE_KEY = "codeshop-demo-users-v1";
 const SESSION_STORAGE_KEY = "codeshop-demo-session-v1";
 const PLAYLIST_STORAGE_KEY = "codeshop-demo-tutorial-playlists-v1";
@@ -604,7 +613,9 @@ const navItems: { label: Page; icon: string; group: string }[] = [
   { label: "Compatibility", icon: "link", group: "WORKSPACE" },
   { label: "Software", icon: "grid", group: "RESOURCES" },
   { label: "Apps", icon: "grid", group: "RESOURCES" },
-  { label: "IPOS", icon: "receipt", group: "RESOURCES" },
+  { label: "Generator", icon: "tag", group: "RESOURCES" },
+  { label: "Dokumentasi Produk", icon: "book", group: "RESOURCES" },
+  { label: "Permintaan", icon: "bell", group: "RESOURCES" },
   { label: "Tutorial", icon: "book", group: "RESOURCES" },
   { label: "Playlist Tutorial", icon: "layers", group: "RESOURCES" },
   { label: "Users", icon: "shield", group: "ADMINISTRATION" },
@@ -673,6 +684,10 @@ function Icon({
 function App() {
   const [users, setUsers] = useState<DemoUser[]>([]);
   const [productItems, setProductItems] = useState<Product[]>(loadProducts);
+  const [productDocumentationItems, setProductDocumentationItems] = useState<
+    ProductDocumentation[]
+  >([]);
+  const [requests, setRequests] = useState<TeamRequest[]>([]);
   const [issueItems, setIssueItems] = useState<TroubleshootingIssue[]>(
     loadTroubleshootingIssues,
   );
@@ -777,17 +792,13 @@ function App() {
   const [selectedConnections, setSelectedConnections] = useState<string[]>([]);
   const [labelVerification, setLabelVerification] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [openIssue, setOpenIssue] = useState<string | null>(
-    issueItems[0]?.id ?? null,
-  );
+  const [openIssue, setOpenIssue] = useState<string | null>(null);
   const [compatProduct, setCompatProduct] = useState(
     () => productItems[0]?.name ?? "",
   );
   const [compatSystem, setCompatSystem] = useState("Android");
   const [compatConnection, setCompatConnection] = useState("Bluetooth");
   const [checkedCompatibility, setCheckedCompatibility] = useState(false);
-  const [iposOpen, setIposOpen] = useState("Instalasi");
-  const [iposArticles, setIposArticles] = useState<IposArticle[]>([]);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
@@ -811,7 +822,8 @@ function App() {
           appsFromDatabase,
           tutorialsFromDatabase,
           playlistsFromDatabase,
-          iposFromDatabase,
+          productDocumentationFromDatabase,
+          requestsFromDatabase,
         ] = await Promise.all([
           loadContent<Product>("products"),
           loadContent<TroubleshootingIssue>("troubleshooting"),
@@ -819,7 +831,8 @@ function App() {
           loadContent<AppCatalogItem>("apps"),
           loadContent<StandaloneTutorial>("tutorials"),
           loadContent<TutorialPlaylist>("playlists"),
-          loadContent<IposArticle>("ipos"),
+          loadContent<ProductDocumentation>("product_documentation"),
+          loadRequests(),
         ]);
         let nextProducts = productsFromDatabase;
         let nextIssues = issuesFromDatabase;
@@ -827,45 +840,16 @@ function App() {
         const nextApps = appsFromDatabase;
         let nextTutorials = tutorialsFromDatabase;
         let nextPlaylists = playlistsFromDatabase;
-        let nextIposArticles = iposFromDatabase;
         if (
           profile.role === "owner" &&
           localStorage.getItem(LEGACY_IMPORT_KEY) !== "done"
         ) {
-          const iposLegacy: IposArticle[] = [
-            {
-              id: "ipos-install",
-              title: "Instalasi",
-              text: "Unduh installer IPOS 5 dari portal resmi, jalankan sebagai administrator, lalu ikuti instruksi pada layar. Pastikan komputer memenuhi spesifikasi minimum sebelum instalasi.",
-            },
-            {
-              id: "ipos-activation",
-              title: "Aktivasi",
-              text: "Buka menu aktivasi dari aplikasi IPOS, masukkan kode lisensi yang diberikan saat pembelian, lalu pastikan perangkat terhubung ke internet.",
-            },
-            {
-              id: "ipos-license",
-              title: "Lisensi",
-              text: "Informasi lisensi tersedia pada akun pembelian Anda. Untuk bantuan pemindahan lisensi ke perangkat lain, hubungi tim support Codeshop.",
-            },
-            {
-              id: "ipos-database",
-              title: "Database",
-              text: "Lakukan backup database secara berkala melalui menu Pengaturan > Backup. Simpan file backup di lokasi yang aman.",
-            },
-            {
-              id: "ipos-troubleshooting",
-              title: "Troubleshooting",
-              text: "Jika aplikasi tidak dapat dibuka, periksa koneksi database, hak akses aplikasi, dan pastikan Windows telah diperbarui.",
-            },
-          ];
           [
             nextProducts,
             nextIssues,
             nextSoftware,
             nextTutorials,
             nextPlaylists,
-            nextIposArticles,
           ] = await Promise.all([
             importLegacyContent(
               "products",
@@ -897,12 +881,6 @@ function App() {
               playlistsFromDatabase,
               (item) => item.id,
             ),
-            importLegacyContent(
-              "ipos",
-              iposLegacy,
-              iposFromDatabase,
-              (item) => item.id,
-            ),
           ]);
           for (const key of [
             USERS_STORAGE_KEY,
@@ -928,8 +906,9 @@ function App() {
         setAppItems(nextApps);
         setStandaloneTutorials(nextTutorials);
         setPlaylists(nextPlaylists);
+        setProductDocumentationItems(productDocumentationFromDatabase);
+        setRequests(requestsFromDatabase);
         setSelectedPlaylistId(nextPlaylists[0]?.id ?? "");
-        setIposArticles(nextIposArticles);
         setCompatProduct((current) =>
           nextProducts.some((product) => product.name === current)
             ? current
@@ -982,6 +961,28 @@ function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!activeUser?.id || !supabase) return;
+    const client = supabase;
+    const channel = client
+      .channel("shared-requests")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "requests" },
+        () => {
+          void loadRequests()
+            .then(setRequests)
+            .catch((error: unknown) =>
+              console.error("Gagal menyegarkan permintaan tim.", error),
+            );
+        },
+      )
+      .subscribe();
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [activeUser?.id]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -1722,6 +1723,70 @@ function App() {
     setProductNotice(`${product.name} telah dihapus.`);
   };
 
+  const saveProductDocumentation = async (item: ProductDocumentation) => {
+    if (!isAdmin)
+      throw new Error("Hanya admin yang dapat mengelola dokumentasi produk.");
+    await saveContent("product_documentation", item.id, item);
+    setProductDocumentationItems((current) =>
+      current.some((existing) => existing.id === item.id)
+        ? current.map((existing) => (existing.id === item.id ? item : existing))
+        : [item, ...current],
+    );
+  };
+
+  const deleteProductDocumentation = async (item: ProductDocumentation) => {
+    if (
+      !isAdmin ||
+      !(await confirmDestructiveAction(
+        "Hapus dokumentasi produk?",
+        `Dokumentasi untuk "${item.productName}" akan dihapus.`,
+      ))
+    )
+      return false;
+    await deleteContent("product_documentation", item.id);
+    setProductDocumentationItems((current) =>
+      current.filter((existing) => existing.id !== item.id),
+    );
+    return true;
+  };
+
+  const submitTeamRequest = async (title: string, description: string) => {
+    if (!activeUser || activeUser.role !== "sales")
+      throw new Error("Hanya akun sales yang dapat mengirim permintaan.");
+    const request = await createRequest(
+      title,
+      description,
+      activeUser.id,
+      activeUser.name,
+    );
+    setRequests((current) => [request, ...current]);
+  };
+
+  const updateTeamRequestStatus = async (
+    request: TeamRequest,
+    status: RequestStatus,
+    rejectionReason?: string,
+  ) => {
+    if (!isAdmin || !activeUser)
+      throw new Error("Hanya admin yang dapat memproses permintaan.");
+    const normalizedReason =
+      status === "rejected" ? (rejectionReason?.trim() ?? "") : null;
+    await setRequestStatus(request.id, status, activeUser.id, normalizedReason);
+    setRequests((current) =>
+      current.map((item) =>
+        item.id === request.id
+          ? {
+              ...item,
+              status,
+              rejectionReason: normalizedReason,
+              processedBy: activeUser.id,
+              updatedAt: new Date().toISOString(),
+            }
+          : item,
+      ),
+    );
+  };
+
   const openPlaylist = (playlist: TutorialPlaylist) => {
     setSelectedPlaylistId(playlist.id);
     goTo("Playlist Tutorial");
@@ -1768,13 +1833,14 @@ function App() {
 
   const goTo = (target: Page) => {
     if (target === "Users" && !isOwner) return;
+    if (target === "Generator") {
+      window.location.assign("/generator");
+      return;
+    }
+    if (target === "Troubleshooting") setOpenIssue(null);
     setPage(target);
     setMobileNavOpen(false);
     setQuery("");
-  };
-  const startSearch = (value: string) => {
-    setQuery(value);
-    setPage(value ? "Produk" : "Home");
   };
   const compatibilityProduct =
     productItems.find((product) => product.name === compatProduct) ??
@@ -1791,6 +1857,20 @@ function App() {
         pair.system === compatSystem && pair.connection === compatConnection,
     ),
   );
+  const tutorialTotal =
+    standaloneTutorials.length +
+    playlists.reduce((total, playlist) => total + playlist.lessons.length, 0);
+  const homeStats = [
+    { label: "Produk", total: productItems.length },
+    { label: "Tutorial", total: tutorialTotal },
+    { label: "Dokumentasi produk", total: productDocumentationItems.length },
+    { label: "Permintaan", total: requests.length },
+    { label: "Troubleshooting", total: issueItems.length },
+    { label: "Apps", total: appItems.length },
+  ];
+  const inProgressRequestsCount = requests.filter(
+    (request) => request.status === "in_progress",
+  ).length;
   const navGroups = isOwner
     ? ["WORKSPACE", "RESOURCES", "ADMINISTRATION"]
     : ["WORKSPACE", "RESOURCES"];
@@ -1861,6 +1941,16 @@ function App() {
                     <span>
                       {item.label === "Users" ? "Kelola pengguna" : item.label}
                     </span>
+                    {isAdmin &&
+                      item.label === "Permintaan" &&
+                      inProgressRequestsCount > 0 && (
+                        <span
+                          className="nav-count"
+                          aria-label={`${inProgressRequestsCount} permintaan sedang diproses`}
+                        >
+                          {inProgressRequestsCount}
+                        </span>
+                      )}
                   </button>
                 ))}
             </div>
@@ -1953,46 +2043,16 @@ function App() {
             <section className="hero-card">
               <div className="hero-content">
                 <span className="hero-kicker">
-                  <Icon name="spark" size={14} /> KNOWLEDGE, SIMPLIFIED
+                  <Icon name="spark" size={14} /> RINGKASAN WORKSPACE
                 </span>
-                <h2>
-                  Ada yang bisa
-                  <br />
-                  kami bantu hari ini?
-                </h2>
-                <p>
-                  Cari produk, solusi kendala, atau panduan teknis dalam satu
-                  tempat.
-                </p>
-                <div className="hero-search">
-                  <Icon name="search" size={20} />
-                  <input
-                    value={query}
-                    onChange={(event) => startSearch(event.target.value)}
-                    onKeyDown={(event) =>
-                      event.key === "Enter" && goTo("Produk")
-                    }
-                    placeholder="Cari produk, kendala, atau solusi..."
-                    aria-label="Cari produk dan solusi"
-                  />
-                  <kbd>↵</kbd>
-                </div>
-                <div className="search-examples">
-                  <span>Coba:</span>
-                  {["CBT-58II", "printer tidak print", "Bluetooth Android"].map(
-                    (example) => (
-                      <button
-                        key={example}
-                        onClick={() => {
-                          startSearch(example);
-                          if (example.includes("printer tidak"))
-                            goTo("Troubleshooting");
-                        }}
-                      >
-                        {example}
-                      </button>
-                    ),
-                  )}
+                <h2 className="home-summary-title">Data tersimpan saat ini</h2>
+                <div className="home-stats-grid">
+                  {homeStats.map((stat) => (
+                    <div className="home-stat" key={stat.label}>
+                      <span>{stat.label}</span>
+                      <strong>{stat.total}</strong>
+                    </div>
+                  ))}
                 </div>
               </div>
               <div className="hero-art" aria-hidden="true">
@@ -2037,80 +2097,6 @@ function App() {
                 </div>
                 <div className="art-star star-a">✳</div>
                 <div className="art-star star-b">✦</div>
-              </div>
-            </section>
-            <section className="quick-section">
-              <div className="section-heading">
-                <div>
-                  <h2>Akses cepat</h2>
-                  <p>Langsung menuju informasi yang Anda butuhkan.</p>
-                </div>
-                <button className="text-link" onClick={() => goTo("Produk")}>
-                  Jelajahi semua <Icon name="arrow" size={15} />
-                </button>
-              </div>
-              <div className="quick-grid">
-                {[
-                  {
-                    title: "Produk",
-                    description: "Spesifikasi & detail",
-                    icon: "box",
-                    color: "lavender",
-                    page: "Produk" as Page,
-                  },
-                  {
-                    title: "Troubleshooting",
-                    description: "Temukan solusi kendala",
-                    icon: "wrench",
-                    color: "peach",
-                    page: "Troubleshooting" as Page,
-                  },
-                  {
-                    title: "Compatibility",
-                    description: "Cek dukungan perangkat",
-                    icon: "link",
-                    color: "mint",
-                    page: "Compatibility" as Page,
-                  },
-                  {
-                    title: "Software",
-                    description: "Driver & aplikasi",
-                    icon: "grid",
-                    color: "blue",
-                    page: "Software" as Page,
-                  },
-                  {
-                    title: "IPOS",
-                    description: "Panduan sistem kasir",
-                    icon: "receipt",
-                    color: "yellow",
-                    page: "IPOS" as Page,
-                  },
-                  {
-                    title: "Tutorial",
-                    description: "Panduan langkah demi langkah",
-                    icon: "book",
-                    color: "rose",
-                    page: "Tutorial" as Page,
-                  },
-                ].map((item) => (
-                  <button
-                    className="quick-card"
-                    key={item.title}
-                    onClick={() => goTo(item.page)}
-                  >
-                    <span className={`quick-icon ${item.color}`}>
-                      <Icon name={item.icon} size={20} />
-                    </span>
-                    <span className="quick-copy">
-                      <strong>{item.title}</strong>
-                      <small>{item.description}</small>
-                    </span>
-                    <span className="quick-arrow">
-                      <Icon name="arrow" size={16} />
-                    </span>
-                  </button>
-                ))}
               </div>
             </section>
             <section className="home-bottom-grid">
@@ -2928,84 +2914,22 @@ function App() {
             }}
           />
         )}
-        {page === "IPOS" && (
-          <div className="page-content inner-page">
-            <div className="page-title-row">
-              <div>
-                <p className="eyebrow">IPOS CENTER</p>
-                <h1>Panduan IPOS, lebih mudah.</h1>
-                <p className="welcome-copy">
-                  Informasi instalasi, aktivasi, dan penggunaan sistem kasir
-                  IPOS.
-                </p>
-              </div>
-              <span className="knowledge-badge">
-                <Icon name="receipt" size={16} /> IPOS 5
-              </span>
-            </div>
-            <div className="ipos-layout">
-              <div className="ipos-intro panel">
-                <span className="ipos-logo">
-                  iPOS<span>.</span>
-                </span>
-                <h2>
-                  Kelola bisnis
-                  <br />
-                  dengan lebih mudah.
-                </h2>
-                <p>
-                  Temukan panduan praktis untuk memulai dan menggunakan aplikasi
-                  kasir IPOS.
-                </p>
-                <div className="ipos-stats">
-                  <span>
-                    <strong>{iposArticles.length}</strong>
-                    <small>Panduan</small>
-                  </span>
-                  <span>
-                    <strong>IPOS 5</strong>
-                    <small>Versi terbaru</small>
-                  </span>
-                </div>
-              </div>
-              <div className="ipos-accordion">
-                {iposArticles.map((item) => (
-                  <article
-                    className={`ipos-item ${iposOpen === item.title ? "ipos-item-open" : ""}`}
-                    key={item.id}
-                  >
-                    <button
-                      onClick={() =>
-                        setIposOpen(iposOpen === item.title ? "" : item.title)
-                      }
-                    >
-                      <span>
-                        <Icon
-                          name={
-                            item.title === "Instalasi"
-                              ? "download"
-                              : item.title === "Troubleshooting"
-                                ? "wrench"
-                                : "receipt"
-                          }
-                          size={17}
-                        />
-                        {item.title}
-                      </span>
-                      <Icon name="down" size={17} />
-                    </button>
-                    {iposOpen === item.title && <p>{item.text}</p>}
-                  </article>
-                ))}
-                {iposArticles.length === 0 && (
-                  <div className="empty-state">
-                    <h3>Belum ada panduan IPOS</h3>
-                    <p>Artikel panduan belum tersedia di Supabase.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+        {page === "Dokumentasi Produk" && (
+          <ProductDocumentationPage
+            items={productDocumentationItems}
+            isAdmin={isAdmin}
+            onSave={saveProductDocumentation}
+            onDelete={deleteProductDocumentation}
+          />
+        )}
+        {page === "Permintaan" && (
+          <RequestsPage
+            items={requests}
+            isAdmin={isAdmin}
+            canSubmit={activeUser.role === "sales"}
+            onCreate={submitTeamRequest}
+            onSetStatus={updateTeamRequestStatus}
+          />
         )}
         {page === "Users" && isOwner && (
           <div className="page-content inner-page users-page">
